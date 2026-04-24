@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HW-ERP Terminal</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+:root{
+  --blue:#2563EB; --red:#DC2626; --green:#16A34A; --blk:#111827;
+  --bg:#1a1a2e; --surface:#16213e; --surface2:#0f3460; --border:#334155;
+  --txt:#e2e8f0; --txt2:#94a3b8; --cyan:#22d3ee; --yellow:#fbbf24;
+  --font:'Consolas','Monaco','Courier New',monospace;
+  --fv:14px; --fz:12px; --fh:16px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:var(--font);background:var(--bg);color:var(--txt);font-size:var(--fv);line-height:1.4;}
+input,select,button,textarea{font-family:var(--font);font-size:var(--fv);}
+::-webkit-scrollbar{height:6px;width:6px;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:0;}
+.inp{background:var(--surface);border:1px solid var(--border);color:var(--txt);padding:4px 8px;width:100%;font-size:var(--fv);}
+.inp:focus{border-color:var(--cyan);outline:none;box-shadow:0 0 0 1px var(--cyan);}
+.inp-sm{font-size:var(--fz);padding:3px 6px;}
+.btn{border:1px solid var(--border);padding:3px 10px;cursor:pointer;font-size:var(--fv);font-weight:700;background:var(--surface);color:var(--txt);}
+.btn:hover{opacity:.85;}
+.btn-blue{background:var(--blue);color:#fff;border-color:var(--blue);}
+.btn-red{background:var(--red);color:#fff;border-color:var(--red);}
+.btn-green{background:var(--green);color:#fff;border-color:var(--green);}
+.btn-cyan{background:transparent;color:var(--cyan);border-color:var(--cyan);}
+.btn-sm{font-size:var(--fz);padding:2px 6px;}
+.zh{font-size:var(--fz);color:var(--txt2);}
+.sep{border:none;border-top:1px solid var(--border);margin:8px 0;}
+.photo-t{width:32px;height:32px;object-fit:cover;border:1px solid var(--border);cursor:pointer;}
+@media print{.no-print{display:none!important;}body{background:#fff;color:#000;}td,th{color:#000!important;border-color:#ccc!important;}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useCallback,useRef}=React;
+const h=React.createElement;
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const fm=(n)=>new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(n);
+const td=()=>new Date().toISOString().slice(0,10);
+const mk=(d)=>d.slice(0,7);
+const DB={g(t){try{return JSON.parse(localStorage.getItem('hw_'+t))||[];}catch{return[];}},s(t,d){localStorage.setItem('hw_'+t,JSON.stringify(d));}};
+
+async function compImg(file){return new Promise((res)=>{const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{const c=document.createElement('canvas');const s=Math.min(1,200/img.width);c.width=img.width*s;c.height=img.height*s;c.getContext('2d').drawImage(img,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',0.6));};img.src=r.result;};r.readAsDataURL(file);});}
+
+/* ═══ Compact Components ═══ */
+function Inp({value,onChange,style,type='text',cls='',...p}){return h('input',{type,value:value||'',onChange:e=>onChange(e.target.value),className:'inp '+cls,style,...p});}
+function Sel({value,onChange,children,style,cls=''}){return h('select',{value,onChange:e=>onChange(e.target.value),className:'inp '+cls,style},children);}
+function FL({vn,zh}){return h('div',{style:{marginBottom:2}},h('span',{style:{color:'var(--cyan)',fontSize:'var(--fv)'}},vn),zh&&h('span',{className:'zh'},' '+zh));}
+
+function Modal({title,tz,onClose,children,width=700}){
+  return h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}},
+    h('div',{style:{background:'var(--bg)',border:'1px solid var(--cyan)',width,maxWidth:'96vw',maxHeight:'92vh',overflow:'auto',padding:'12px 16px'}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid var(--border)',paddingBottom:6,marginBottom:8}},
+        h('div',null,h('span',{style:{color:'var(--cyan)',fontWeight:700}},title),tz&&h('span',{className:'zh'},' '+tz)),
+        h('button',{onClick:onClose,className:'btn btn-sm'},'[ESC]')),children));}
+
+function Tbl({cols,data,onEdit,onDel,hc='var(--blue)'}){
+  if(!data.length)return h('div',{style:{color:'var(--txt2)',padding:12,textAlign:'center'}},'— empty —');
+  return h('div',{style:{overflowX:'auto'}},h('table',{style:{width:'100%',borderCollapse:'collapse'}},
+    h('thead',null,h('tr',{style:{background:hc}},cols.map((c,i)=>h('th',{key:i,style:{padding:'4px 8px',textAlign:'left',color:'#fff',fontSize:'var(--fv)',fontWeight:700,whiteSpace:'nowrap',borderBottom:'2px solid '+hc}},c.l,c.z&&h('span',{style:{fontSize:'var(--fz)',opacity:.7,marginLeft:3}},c.z))))),
+    h('tbody',null,data.map((row,ri)=>h('tr',{key:row.id||ri,style:{borderBottom:'1px solid var(--border)',background:ri%2?'var(--surface)':'transparent'}},
+      cols.map((c,ci)=>h('td',{key:ci,style:{padding:'3px 8px',fontSize:'var(--fv)',whiteSpace:c.wrap?'normal':'nowrap',maxWidth:250,overflow:'hidden',textOverflow:'ellipsis'}},
+        c.k==='_a'
+          ? h('span',{className:'no-print'},
+              onEdit&&h('button',{onClick:()=>onEdit(row),className:'btn btn-sm btn-cyan',style:{marginRight:4}},'✎'),
+              onDel&&h('button',{onClick:()=>onDel(row.id),className:'btn btn-sm',style:{color:'var(--red)',borderColor:'var(--red)'}},'✕'))
+          : c.k==='photo'?(row.photo?h('img',{src:row.photo,className:'photo-t'}):'·')
+          : c.r?c.r(row):(row[c.k]??''))))))));
+}
+
+function Stat({items}){
+  return h('div',{style:{display:'flex',gap:1,marginBottom:8,flexWrap:'wrap'}},
+    items.map((it,i)=>h('div',{key:i,style:{background:'var(--surface)',border:'1px solid var(--border)',padding:'4px 12px',flex:'1 1 140px'}},
+      h('span',{style:{color:it.c||'var(--cyan)',fontWeight:700,fontSize:'var(--fh)'}},it.v),
+      h('span',{style:{color:'var(--txt2)',fontSize:'var(--fz)',marginLeft:6}},it.l))));}
+
+/* ═══ Batch Entry ═══ */
+function Batch({fields,onSave,onClose}){
+  const [rows,setRows]=useState([fields.reduce((o,f)=>({...o,[f.k]:''}),{_id:uid()})]);
+  const refs=useRef({});
+  const setC=(ri,k,v)=>setRows(p=>p.map((r,i)=>i===ri?{...r,[k]:v}:r));
+  const addR=()=>setRows(p=>[...p,fields.reduce((o,f)=>({...o,[f.k]:''}),{_id:uid()})]);
+  const rmR=(i)=>setRows(p=>p.length>1?p.filter((_,j)=>j!==i):[fields.reduce((o,f)=>({...o,[f.k]:''}),{_id:uid()})]);
+  const onKey=(e,ri,fi)=>{
+    if(e.key==='Tab'&&!e.shiftKey&&fi===fields.length-1&&ri===rows.length-1){e.preventDefault();addR();setTimeout(()=>refs.current[`${ri+1}-0`]?.focus(),30);}
+    if(e.key==='Enter'){e.preventDefault();addR();setTimeout(()=>refs.current[`${ri+1}-0`]?.focus(),30);}
+  };
+  const save=()=>{const v=rows.filter(r=>fields.some(f=>r[f.k]?.toString().trim()));if(!v.length)return;onSave(v.map(r=>{const o={};fields.forEach(f=>{o[f.k]=f.t==='number'?Number(r[f.k])||0:r[f.k]||''});return o;}));};
+  const gc=fields.map(f=>f.w||'1fr').join(' ')+' 30px';
+  return h('div',null,
+    h('div',{style:{fontSize:'var(--fz)',color:'var(--txt2)',marginBottom:4}},'Tab→next  Enter→new row  |  ',rows.length,' rows'),
+    h('div',{style:{display:'grid',gridTemplateColumns:gc,gap:4,fontSize:'var(--fz)',color:'var(--cyan)',padding:'2px 0',borderBottom:'1px solid var(--border)'}},fields.map((f,i)=>h('div',{key:i},f.l)),h('div',null)),
+    h('div',{style:{maxHeight:300,overflowY:'auto'}},rows.map((row,ri)=>h('div',{key:row._id,style:{display:'grid',gridTemplateColumns:gc,gap:4,padding:'2px 0',borderBottom:'1px dotted var(--border)'}},
+      fields.map((f,fi)=>h('input',{key:f.k,ref:el=>{refs.current[`${ri}-${fi}`]=el;},className:'inp inp-sm',type:f.t||'text',value:row[f.k]||'',onChange:e=>setC(ri,f.k,e.target.value),onKeyDown:e=>onKey(e,ri,fi),maxLength:f.mx,placeholder:f.p||''})),
+      h('button',{onClick:()=>rmR(ri),className:'btn btn-sm',style:{color:'var(--red)',borderColor:'var(--red)',padding:'1px 4px'}},'×')))),
+    h('div',{style:{display:'flex',justifyContent:'space-between',marginTop:8,paddingTop:6,borderTop:'1px solid var(--border)'}},
+      h('div',null,h('button',{onClick:addR,className:'btn btn-sm btn-cyan'},'+ row')),
+      h('div',{style:{display:'flex',gap:6}},h('button',{onClick:onClose,className:'btn btn-sm'},'Cancel'),h('button',{onClick:save,className:'btn btn-sm btn-green'},'SAVE ALL ('+rows.length+')'))));}
+
+/* ═══ Photo ═══ */
+function PhotoIn({value,onChange}){
+  const ref=useRef();
+  const go=async(e)=>{const f=e.target.files[0];if(!f)return;onChange(await compImg(f));};
+  return h('div',{style:{display:'flex',alignItems:'center',gap:6}},
+    value?h('img',{src:value,style:{width:60,height:60,objectFit:'cover',border:'1px solid var(--border)',cursor:'pointer'},onClick:()=>ref.current.click()})
+      :h('button',{onClick:()=>ref.current.click(),className:'btn btn-sm btn-cyan'},'📷 upload'),
+    h('input',{ref,type:'file',accept:'image/*',onChange:go,style:{display:'none'}}),
+    value&&h('button',{onClick:()=>onChange(''),className:'btn btn-sm',style:{color:'var(--red)'}},'×'));}
+
+/* ═════════════════════════════════════════
+   APP
+   ═══════════════════════════════════════════ */
+function App(){
+  const [tab,setTab]=useState('dash');
+  const [P,sP]=useState(()=>DB.g('products'));
+  const [S,sS]=useState(()=>DB.g('suppliers'));
+  const [B,sB]=useState(()=>DB.g('buyers'));
+  const [PU,sPU]=useState(()=>DB.g('purchases'));
+  const [SA,sSA]=useState(()=>DB.g('sales'));
+  useEffect(()=>DB.s('products',P),[P]);
+  useEffect(()=>DB.s('suppliers',S),[S]);
+  useEffect(()=>DB.s('buyers',B),[B]);
+  useEffect(()=>DB.s('purchases',PU),[PU]);
+  useEffect(()=>DB.s('sales',SA),[SA]);
+
+  const inv=useCallback(()=>P.map(p=>{
+    const ins=PU.flatMap(pu=>(pu.items||[]).filter(i=>i.productId===p.id));
+    const outs=SA.flatMap(sa=>(sa.items||[]).filter(i=>i.productId===p.id));
+    const ti=ins.reduce((s,i)=>s+(Number(i.qty)||0),0);
+    const to=outs.reduce((s,i)=>s+(Number(i.qty)||0),0);
+    const tc=ins.reduce((s,i)=>s+(Number(i.qty)||0)*(Number(i.price)||0),0);
+    return{...p,totalIn:ti,totalOut:to,stock:ti-to,avgCost:ti>0?tc/ti:0};
+  }),[P,PU,SA]);
+
+  const tabs=[{id:'dash',l:'DASHBOARD'},{id:'prod',l:'SẢN PHẨM 品項'},{id:'sup',l:'NCC 供應商'},{id:'buy',l:'KH 買家'},{id:'pin',l:'NHẬP 進貨'},{id:'pout',l:'XUẤT 出貨'},{id:'inv',l:'TỒN KHO 庫存'},{id:'rpt',l:'BÁO CÁO 報表'}];
+
+  return h('div',{style:{maxWidth:1200,margin:'0 auto',padding:'0 8px'}},
+    /* ─ HEADER ─ */
+    h('div',{style:{borderBottom:'2px solid var(--cyan)',padding:'6px 0',display:'flex',justifyContent:'space-between',alignItems:'center'},className:'no-print'},
+      h('div',null,
+        h('span',{style:{color:'var(--cyan)',fontWeight:700,fontSize:'var(--fh)'}},'▸ HW-ERP'),
+        h('span',{style:{color:'var(--txt2)',fontSize:'var(--fz)',marginLeft:8}},'Quản lý Kho Phần cứng / 五金庫存管理系統')),
+      h('span',{style:{color:'var(--txt2)',fontSize:'var(--fz)'}},td())),
+    /* ─ TABS ─ */
+    h('div',{style:{display:'flex',gap:2,padding:'4px 0',borderBottom:'1px solid var(--border)',overflowX:'auto'},className:'no-print'},
+      tabs.map(t=>h('button',{key:t.id,onClick:()=>setTab(t.id),style:{
+        background:tab===t.id?'var(--cyan)':'transparent',color:tab===t.id?'var(--bg)':'var(--txt2)',
+        border:'1px solid '+(tab===t.id?'var(--cyan)':'var(--border)'),padding:'3px 10px',cursor:'pointer',
+        fontSize:'var(--fz)',fontWeight:tab===t.id?700:400,whiteSpace:'nowrap',fontFamily:'var(--font)'}},t.l))),
+    /* ─ CONTENT ─ */
+    h('div',{style:{padding:'8px 0'}},
+      tab==='dash'&&h(Dash,{P,S,B,PU,SA,inv}),
+      tab==='prod'&&h(Prods,{P,sP,S}),
+      tab==='sup'&&h(Sups,{S,sS}),
+      tab==='buy'&&h(Buys,{B,sB}),
+      tab==='pin'&&h(PIn,{PU,sPU,P,S}),
+      tab==='pout'&&h(POut,{SA,sSA,P,B,inv}),
+      tab==='inv'&&h(Inv,{inv}),
+      tab==='rpt'&&h(Rpt,{P,S,PU,SA,inv})));
+}
+
+/* ═══ DASHBOARD ═══ */
+function Dash({P,S,B,PU,SA,inv}){
+  const v=inv();const ts=v.reduce((s,i)=>s+i.stock,0);const tv=v.reduce((s,i)=>s+i.stock*i.avgCost,0);
+  const tm=mk(td());
+  const mP=PU.filter(p=>mk(p.date)===tm).reduce((s,p)=>s+(p.items||[]).reduce((ss,i)=>ss+(Number(i.qty)||0)*(Number(i.price)||0),0),0);
+  const mS=SA.filter(s=>mk(s.date)===tm).reduce((s,sa)=>s+(sa.items||[]).reduce((ss,i)=>ss+(Number(i.qty)||0)*(Number(i.salePrice)||0),0),0);
+  const low=v.filter(i=>i.safetyStock&&i.stock<=i.safetyStock);
+  return h('div',null,
+    h('div',{style:{color:'var(--cyan)',fontWeight:700,marginBottom:6}},'▸ TỔNG QUAN HỆ THỐNG ',h('span',{className:'zh'},'系統總覽')),
+    h(Stat,{items:[
+      {l:'Sản phẩm/品項',v:P.length},{l:'NCC/供應商',v:S.length,c:'var(--green)'},{l:'KH/買家',v:B.length,c:'var(--red)'},
+      {l:'Tồn kho/庫存',v:fm(ts),c:'var(--yellow)'},{l:'Giá trị/總值',v:fm(tv)},
+      {l:'Nhập tháng/月進',v:fm(mP),c:'var(--red)'},{l:'Xuất tháng/月出',v:fm(mS),c:'var(--green)'},
+      {l:'Lợi nhuận/毛利',v:fm(mS-mP),c:mS-mP>=0?'var(--green)':'var(--red)'}]}),
+    low.length>0&&h('div',{style:{border:'1px solid var(--red)',padding:'4px 8px',marginTop:4}},
+      h('span',{style:{color:'var(--red)',fontWeight:700}},'⚠ LOW STOCK: '),
+      low.map((i,idx)=>h('span',{key:i.id,style:{color:'var(--yellow)'}},i.name,'[',i.stock,'/',i.safetyStock,']',idx<low.length-1?', ':''))));}
+
+/* ═══ PRODUCTS ═══ */
+function Prods({P,sP,S}){
+  const [m,sm]=useState(null);const [b,sb]=useState(false);const [pv,spv]=useState(null);
+  const save=(it)=>{if(it.id)sP(p=>p.map(x=>x.id===it.id?it:x));else sP(p=>[...p,{...it,id:uid()}]);sm(null);};
+  const bSave=(rows)=>{sP(p=>[...p,...rows.map(r=>({id:uid(),name:r.name,spec:r.spec,partNo:r.partNo,safetyStock:r.safetyStock,supplierIds:[],photo:''}))]);sb(false);};
+  const cols=[
+    {k:'photo',l:'📷'},{k:'name',l:'Tên SP',z:'品名'},{k:'spec',l:'Quy cách',z:'規格'},{k:'partNo',l:'Mã hàng',z:'料號'},
+    {k:'supplierIds',l:'NCC',z:'供應商',r:r=>(r.supplierIds||[]).map(sid=>S.find(s=>s.id===sid)?.name||'').filter(Boolean).join(',')},
+    {k:'safetyStock',l:'An toàn',z:'安全量'},{k:'_a',l:''}];
+  return h('div',null,
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6},className:'no-print'},
+      h('div',{style:{color:'var(--cyan)',fontWeight:700}},'▸ DANH MỤC SẢN PHẨM ',h('span',{className:'zh'},'品項表'),' [',P.length,']'),
+      h('div',{style:{display:'flex',gap:4}},
+        h('button',{onClick:()=>sb(true),className:'btn btn-sm btn-green'},'⚡BATCH'),
+        h('button',{onClick:()=>sm({name:'',spec:'',partNo:'',supplierIds:[],safetyStock:0,photo:''}),className:'btn btn-sm btn-blue'},'+ADD'))),
+    h(Tbl,{cols,data:P,onEdit:r=>sm({...r}),onDel:id=>{if(confirm('Delete?'))sP(p=>p.filter(x=>x.id!==id))}}),
+    m&&h(Modal,{title:'SẢN PHẨM',tz:'品項',onClose:()=>sm(null),width:600},h(ProdForm,{item:m,S,onSave:save,onClose:()=>sm(null)})),
+    b&&h(Modal,{title:'⚡ BATCH ADD',tz:'批次新增',onClose:()=>sb(false),width:800},
+      h(Batch,{fields:[{k:'name',l:'Tên SP',w:'2fr',p:'Product name'},{k:'spec',l:'Quy cách',w:'1fr',mx:20,p:'Spec'},{k:'partNo',l:'Mã hàng',w:'1fr',mx:20,p:'Part#'},{k:'safetyStock',l:'SL',w:'60px',t:'number',p:'0'}],onSave:bSave,onClose:()=>sb(false)})),
+    pv&&h('div',{onClick:()=>spv(null),style:{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:2000,cursor:'pointer'}},
+      h('img',{src:pv,style:{maxWidth:'90vw',maxHeight:'90vh',border:'2px solid var(--cyan)'}})));}
+
+function ProdForm({item,S,onSave,onClose}){
+  const [f,sf]=useState(item);const s=(k,v)=>sf(p=>({...p,[k]:v}));
+  return h('div',null,
+    h('div',{style:{display:'grid',gridTemplateColumns:'1fr 80px',gap:12,marginBottom:8}},
+      h('div',null,
+        h(FL,{vn:'Tên SP',zh:'品名'}),h(Inp,{value:f.name,onChange:v=>s('name',v)}),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginTop:6}},
+          h('div',null,h(FL,{vn:'Quy cách',zh:'規格'}),h(Inp,{value:f.spec,onChange:v=>s('spec',v),maxLength:20})),
+          h('div',null,h(FL,{vn:'Mã hàng',zh:'料號'}),h(Inp,{value:f.partNo,onChange:v=>s('partNo',v),maxLength:20})),
+          h('div',null,h(FL,{vn:'An toàn',zh:'安全量'}),h(Inp,{type:'number',value:f.safetyStock,onChange:v=>s('safetyStock',Number(v))})))),
+      h('div',null,h(FL,{vn:'📷'}),h(PhotoIn,{value:f.photo,onChange:v=>s('photo',v)}))),
+    h(FL,{vn:'NCC',zh:'供應商'}),
+    h('div',{style:{display:'flex',flexWrap:'wrap',gap:3,marginBottom:8}},
+      S.map(sup=>{const sel=(f.supplierIds||[]).includes(sup.id);return h('button',{key:sup.id,onClick:()=>{const ids=f.supplierIds||[];s('supplierIds',sel?ids.filter(x=>x!==sup.id):[...ids,sup.id]);},className:'btn btn-sm '+(sel?'btn-green':''),style:sel?{}:{color:'var(--txt2)'}},sel?'■ ':'□ ',sup.name);}),
+      !S.length&&h('span',{className:'zh'},'add suppliers first')),
+    h('hr',{className:'sep'}),
+    h('div',{style:{display:'flex',justifyContent:'flex-end',gap:6}},
+      h('button',{onClick:onClose,className:'btn btn-sm'},'CANCEL'),h('button',{onClick:()=>onSave(f),className:'btn btn-sm btn-blue'},'SAVE')));}
+
+/* ═══ SUPPLIERS ═══ */
+function Sups({S,sS}){
+  const [m,sm]=useState(null);const [b,sb]=useState(false);
+  const save=(it)=>{if(it.id)sS(p=>p.map(x=>x.id===it.id?it:x));else sS(p=>[...p,{...it,id:uid()}]);sm(null);};
+  const bSave=(rows)=>{sS(p=>[...p,...rows.map(r=>({...r,id:uid()}))]);sb(false);};
+  const cols=[{k:'name',l:'Tên NCC',z:'名稱'},{k:'contact',l:'Người LH',z:'聯絡人'},{k:'phone',l:'ĐT',z:'電話'},{k:'fax',l:'Fax'},{k:'address',l:'Địa chỉ',z:'地址'},{k:'_a',l:''}];
+  return h('div',null,
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6},className:'no-print'},
+      h('div',{style:{color:'var(--cyan)',fontWeight:700}},'▸ NHÀ CUNG CẤP ',h('span',{className:'zh'},'供應商'),' [',S.length,']'),
+      h('div',{style:{display:'flex',gap:4}},h('button',{onClick:()=>sb(true),className:'btn btn-sm btn-green'},'⚡BATCH'),h('button',{onClick:()=>sm({name:'',contact:'',phone:'',fax:'',address:''}),className:'btn btn-sm btn-blue'},'+ADD'))),
+    h(Tbl,{cols,data:S,hc:'var(--green)',onEdit:r=>sm({...r}),onDel:id=>{if(confirm('Delete?'))sS(p=>p.filter(x=>x.id!==id))}}),
+    m&&h(Modal,{title:'NCC',tz:'供應商',onClose:()=>sm(null),width:520},h(EForm,{item:m,fields:[{k:'name',vn:'Tên',zh:'名稱',full:1},{k:'contact',vn:'Người LH',zh:'聯絡人'},{k:'phone',vn:'ĐT',zh:'電話',mx:20},{k:'fax',vn:'Fax',mx:20},{k:'address',vn:'Địa chỉ',zh:'地址',full:1}],onSave:save,onClose:()=>sm(null)})),
+    b&&h(Modal,{title:'⚡ BATCH NCC',onClose:()=>sb(false),width:800},h(Batch,{fields:[{k:'name',l:'Tên',w:'2fr'},{k:'contact',l:'LH',w:'1fr'},{k:'phone',l:'ĐT',w:'1fr',mx:20},{k:'fax',l:'Fax',w:'1fr',mx:20},{k:'address',l:'Địa chỉ',w:'2fr'}],onSave:bSave,onClose:()=>sb(false)})));}
+
+/* ═══ BUYERS ═══ */
+function Buys({B,sB}){
+  const [m,sm]=useState(null);const [b,sb]=useState(false);
+  const save=(it)=>{if(it.id)sB(p=>p.map(x=>x.id===it.id?it:x));else sB(p=>[...p,{...it,id:uid()}]);sm(null);};
+  const bSave=(rows)=>{sB(p=>[...p,...rows.map(r=>({...r,id:uid()}))]);sb(false);};
+  const cols=[{k:'name',l:'Tên KH',z:'買家'},{k:'phone',l:'ĐT',z:'電話'},{k:'fax',l:'Fax'},{k:'address',l:'Địa chỉ GH',z:'出貨地址'},{k:'_a',l:''}];
+  return h('div',null,
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6},className:'no-print'},
+      h('div',{style:{color:'var(--cyan)',fontWeight:700}},'▸ KHÁCH HÀNG ',h('span',{className:'zh'},'買家'),' [',B.length,']'),
+      h('div',{style:{display:'flex',gap:4}},h('button',{onClick:()=>sb(true),className:'btn btn-sm btn-green'},'⚡BATCH'),h('button',{onClick:()=>sm({name:'',phone:'',fax:'',address:''}),className:'btn btn-sm btn-blue'},'+ADD'))),
+    h(Tbl,{cols,data:B,hc:'var(--red)',onEdit:r=>sm({...r}),onDel:id=>{if(confirm('Delete?'))sB(p=>p.filter(x=>x.id!==id))}}),
+    m&&h(Modal,{title:'KH',tz:'買家',onClose:()=>sm(null),width:520},h(EForm,{item:m,fields:[{k:'name',vn:'Tên',zh:'名稱',full:1},{k:'phone',vn:'ĐT',zh:'電話',mx:20},{k:'fax',vn:'Fax',mx:20},{k:'address',vn:'Địa chỉ GH',zh:'出貨地址',full:1}],onSave:save,onClose:()=>sm(null)})),
+    b&&h(Modal,{title:'⚡ BATCH KH',onClose:()=>sb(false),width:700},h(Batch,{fields:[{k:'name',l:'Tên',w:'2fr'},{k:'phone',l:'ĐT',w:'1fr',mx:20},{k:'fax',l:'Fax',w:'1fr',mx:20},{k:'address',l:'Địa chỉ',w:'2fr'}],onSave:bSave,onClose:()=>sb(false)})));}
+
+function EForm({item,fields,onSave,onClose}){
+  const [f,sf]=useState(item);const s=(k,v)=>sf(p=>({...p,[k]:v}));
+  return h('div',null,
+    h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}},
+      fields.map(fd=>h('div',{key:fd.k,style:fd.full?{gridColumn:'1/-1'}:{}},
+        h(FL,{vn:fd.vn,zh:fd.zh}),h(Inp,{value:f[fd.k],onChange:v=>s(fd.k,v),maxLength:fd.mx})))),
+    h('hr',{className:'sep'}),
+    h('div',{style:{display:'flex',justifyContent:'flex-end',gap:6}},
+      h('button',{onClick:onClose,className:'btn btn-sm'},'CANCEL'),h('button',{onClick:()=>onSave(f),className:'btn btn-sm btn-blue'},'SAVE')));}
+
+/* ═══ PURCHASE ═══ */
+function PIn({PU,sPU,P,S}){
+  const [m,sm]=useState(null);
+  const save=(it)=>{if(it.id)sPU(p=>p.map(x=>x.id===it.id?it:x));else sPU(p=>[...p,{...it,id:uid()}]);sm(null);};
+  const gt=(items)=>(items||[]).reduce((s,i)=>s+(Number(i.qty)||0)*(Number(i.price)||0),0);
+  const cols=[{k:'date',l:'Ngày',z:'日期'},{k:'supplierId',l:'NCC',z:'供應商',r:r=>S.find(s=>s.id===r.supplierId)?.name||''},{k:'items',l:'#SP',r:r=>(r.items||[]).length},{k:'total',l:'Tổng',z:'總價',r:r=>h('span',{style:{color:'var(--red)'}},fm(gt(r.items)))},{k:'expectedDate',l:'Giao DK',z:'預計出貨'},{k:'_a',l:''}];
+  return h('div',null,
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6},className:'no-print'},
+      h('div',{style:{color:'var(--cyan)',fontWeight:700}},'▸ NHẬP HÀNG ',h('span',{className:'zh'},'進貨'),' [',PU.length,']'),
+      h('button',{onClick:()=>sm({supplierId:'',date:td(),expectedDate:'',items:[{productId:'',qty:'',price:''}]}),className:'btn btn-sm btn-blue'},'+NEW')),
+    h(Tbl,{cols,data:[...PU].sort((a,b)=>b.date.localeCompare(a.date)),hc:'var(--red)',onEdit:r=>sm({...r,items:[...(r.items||[])]}),onDel:id=>{if(confirm('Delete?'))sPU(p=>p.filter(x=>x.id!==id))}}),
+    m&&h(OrdModal,{type:'p',item:m,P,ents:S,eVn:'NCC',eKey:'supplierId',onSave:save,onClose:()=>sm(null)}));}
+
+/* ═══ SALES ═══ */
+function POut({SA,sSA,P,B,inv}){
+  const [m,sm]=useState(null);
+  const save=(it)=>{if(it.id)sSA(p=>p.map(x=>x.id===it.id?it:x));else sSA(p=>[...p,{...it,id:uid()}]);sm(null);};
+  const gt=(items)=>(items||[]).reduce((s,i)=>s+(Number(i.qty)||0)*(Number(i.salePrice)||0),0);
+  const cols=[{k:'date',l:'Ngày',z:'日期'},{k:'buyerId',l:'KH',z:'買家',r:r=>B.find(b=>b.id===r.buyerId)?.name||''},{k:'items',l:'#SP',r:r=>(r.items||[]).length},{k:'total',l:'Tổng',z:'總價',r:r=>h('span',{style:{color:'var(--green)'}},fm(gt(r.items)))},{k:'deliveryDate',l:'Giao',z:'交貨日'},{k:'_a',l:''}];
+  return h('div',null,
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6},className:'no-print'},
+      h('div',{style:{color:'var(--cyan)',fontWeight:700}},'▸ XUẤT HÀNG ',h('span',{className:'zh'},'出貨'),' [',SA.length,']'),
+      h('button',{onClick:()=>sm({buyerId:'',date:td(),deliveryDate:'',items:[{productId:'',qty:'',salePrice:''}]}),className:'btn btn-sm btn-blue'},'+NEW')),
+    h(Tbl,{cols,data:[...SA].sort((a,b)=>b.date.localeCompare(a.date)),hc:'var(--green)',onEdit:r=>sm({...r,items:[...(r.items||[])]}),onDel:id=>{if(confirm('Delete?'))sSA(p=>p.filter(x=>x.id!==id))}}),
+    m&&h(OrdModal,{type:'s',item:m,P,ents:B,eVn:'KH',eKey:'buyerId',onSave:save,onClose:()=>sm(null),inventory:inv()}));}
+
+/* ═══ ORDER MODAL ═══ */
+function OrdModal({type,item,P,ents,eVn,eKey,onSave,onClose,inventory}){
+  const ip=type==='p';const pK=ip?'price':'salePrice';const dK=ip?'expectedDate':'deliveryDate';
+  const [f,sf]=useState(item);const s=(k,v)=>sf(p=>({...p,[k]:v}));
+  const sI=(i,k,v)=>{const it=[...f.items];it[i]={...it[i],[k]:v};s('items',it);};
+  const add=()=>s('items',[...f.items,{productId:'',qty:'',[pK]:''}]);
+  const rm=(i)=>s('items',f.items.filter((_,j)=>j!==i));
+  const tot=f.items.reduce((s,i)=>s+(Number(i.qty)||0)*(Number(i[pK])||0),0);
+  return h(Modal,{title:ip?'NHẬP HÀNG':'XUẤT HÀNG',tz:ip?'進貨單':'出貨單',onClose,width:820},
+    h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:8}},
+      h('div',null,h(FL,{vn:eVn}),h(Sel,{value:f[eKey],onChange:v=>s(eKey,v)},h('option',{value:''},'--'),ents.map(e=>h('option',{key:e.id,value:e.id},e.name)))),
+      h('div',null,h(FL,{vn:ip?'Ngày nhập':'Ngày bán'}),h(Inp,{type:'date',value:f.date,onChange:v=>s('date',v)})),
+      h('div',null,h(FL,{vn:ip?'Ngày giao DK':'Ngày giao'}),h(Inp,{type:'date',value:f[dK],onChange:v=>s(dK,v)}))),
+    h('div',{style:{fontSize:'var(--fz)',color:'var(--cyan)',marginBottom:4}},'── Chi tiết / 品項明細 ──'),
+    h('div',{style:{display:'grid',gridTemplateColumns:'3fr 1fr 1fr 1fr 30px',gap:4,fontSize:'var(--fz)',color:'var(--txt2)',marginBottom:2}},'SP / 品項',ip?'Đơn giá/單價':'Giá bán/報價','SL/數量','Tiền/小計',''),
+    f.items.map((it,i)=>h('div',{key:i,style:{display:'grid',gridTemplateColumns:'3fr 1fr 1fr 1fr 30px',gap:4,marginBottom:3,alignItems:'center'}},
+      h(Sel,{value:it.productId,onChange:v=>sI(i,'productId',v),cls:'inp-sm'},h('option',{value:''},'--'),
+        P.map(p=>{const si=!ip&&inventory?`[${inventory.find(x=>x.id===p.id)?.stock||0}]`:'';return h('option',{key:p.id,value:p.id},p.name+' ('+p.partNo+') '+si);})),
+      h(Inp,{type:'number',value:it[pK],onChange:v=>sI(i,pK,v),cls:'inp-sm'}),
+      h(Inp,{type:'number',value:it.qty,onChange:v=>sI(i,'qty',v),cls:'inp-sm'}),
+      h('span',{style:{color:'var(--yellow)',fontWeight:700,fontSize:'var(--fv)'}},fm((Number(it.qty)||0)*(Number(it[pK])||0))),
+      h('button',{onClick:()=>rm(i),className:'btn btn-sm',style:{color:'var(--red)',padding:'1px 4px'}},'×'))),
+    h('button',{onClick:add,className:'btn btn-sm btn-cyan',style:{marginTop:4}},'+SP'),
+    h('hr',{className:'sep'}),
+    h('div',{style:{display:'flex',justifyContent:'space-between'}},
+      h('span',null,'TỔNG/總計: ',h('span',{style:{color:'var(--cyan)',fontWeight:700,fontSize:'var(--fh)'}},fm(tot))),
+      h('div',{style:{display:'flex',gap:6}},h('button',{onClick:onClose,className:'btn btn-sm'},'CANCEL'),h('button',{onClick:()=>onSave(f),className:'btn btn-sm btn-blue'},'SAVE'))));}
+
+/* ═══ INVENTORY ═══ */
+function Inv({inv}){
+  const v=inv();const [fl,sfl]=useState('');
+  const fd=v.filter(i=>(i.name||'').toLowerCase().includes(fl.toLowerCase())||(i.partNo||'').toLowerCase().includes(fl.toLowerCase()));
+  const cols=[
+    {k:'photo',l:'📷'},{k:'partNo',l:'Mã',z:'料號'},{k:'name',l:'Tên SP',z:'品名'},{k:'spec',l:'Q.cách',z:'規格'},
+    {k:'totalIn',l:'Nhập'},{k:'totalOut',l:'Xuất'},
+    {k:'stock',l:'Tồn',z:'庫存',r:r=>h('span',{style:{color:r.safetyStock&&r.stock<=r.safetyStock?'var(--red)':'var(--green)',fontWeight:700}},r.stock,r.safetyStock&&r.stock<=r.safetyStock?' ⚠':'')},
+    {k:'avgCost',l:'TB giá',z:'平均成本',r:r=>fm(r.avgCost)},
+    {k:'val',l:'Giá trị',z:'庫存價值',r:r=>h('span',{style:{color:'var(--cyan)'}},fm(r.stock*r.avgCost))},
+    {k:'safetyStock',l:'AT',z:'安全'}];
+  return h('div',null,
+    h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6,gap:8},className:'no-print'},
+      h('div',{style:{color:'var(--cyan)',fontWeight:700}},'▸ TỒN KHO ',h('span',{className:'zh'},'庫存'),' [',v.length,']'),
+      h(Inp,{value:fl,onChange:sfl,placeholder:'🔍 search...',style:{maxWidth:200}})),
+    h(Stat,{items:[
+      {l:'SP',v:v.length},{l:'Tồn',v:fm(v.reduce((s,i)=>s+i.stock,0)),c:'var(--green)'},
+      {l:'Giá trị',v:fm(v.reduce((s,i)=>s+i.stock*i.avgCost,0)),c:'var(--yellow)'},
+      {l:'Thấp',v:v.filter(i=>i.safetyStock&&i.stock<=i.safetyStock).length,c:'var(--red)'}]}),
+    h(Tbl,{cols,data:fd,hc:'var(--blk)'}));}
+
+/* ═══ REPORTS ═══ */
+function Rpt({P,S,PU,SA,inv}){
+  const [rt,srt]=useState('inv');const [mo,smo]=useState(mk(td()));const [sid,ssid]=useState('');
+  const v=inv();
+  const mkT=(color,headers,rows,footer)=>h('table',{style:{width:'100%',borderCollapse:'collapse',marginTop:6}},
+    h('thead',null,h('tr',{style:{background:color}},headers.map((hd,i)=>h('th',{key:i,style:{padding:'3px 8px',textAlign:'left',color:'#fff',fontSize:'var(--fv)'}},hd)))),
+    h('tbody',null,rows.map((row,ri)=>h('tr',{key:ri,style:{borderBottom:'1px solid var(--border)',background:ri%2?'var(--surface)':'transparent'}},
+      row.map((c,ci)=>{const o=typeof c==='object'&&c;return h('td',{key:ci,style:{padding:'3px 8px',fontSize:'var(--fv)',color:o?.c||'var(--txt)',fontWeight:o?.b?700:400}},o?o.v:c);})))),
+    footer&&h('tfoot',null,h('tr',{style:{borderTop:'2px solid '+color}},footer.map((c,i)=>{const o=typeof c==='object'&&c;return h('td',{key:i,style:{padding:'4px 8px',fontSize:'var(--fv)',color:o?.c||color,fontWeight:700}},o?o.v:c);}))));
+
+  const invRpt=()=>mkT('var(--blue)',['Mã','Tên SP','Q.cách','Tồn','TB giá','Giá trị','AT','Status'],
+    v.map(r=>[r.partNo,r.name,r.spec,{v:r.stock,b:1},fm(r.avgCost),{v:fm(r.stock*r.avgCost),c:'var(--cyan)'},r.safetyStock||'-',r.safetyStock&&r.stock<=r.safetyStock?{v:'⚠LOW',c:'var(--red)'}:{v:'OK',c:'var(--green)'}]),
+    ['TỔNG','','',{v:fm(v.reduce((s,r)=>s+r.stock,0)),b:1},'',{v:fm(v.reduce((s,r)=>s+r.stock*r.avgCost,0)),c:'var(--cyan)'},'','']);
+
+  const supRpt=()=>{
+    const fl=PU.filter(p=>mk(p.date)===mo&&(!sid||p.supplierId===sid));
+    const g={};fl.forEach(p=>{if(!g[p.supplierId])g[p.supplierId]=[];g[p.supplierId].push(p);});
+    if(!Object.keys(g).length)return h('div',{style:{color:'var(--txt2)'}},'— no data —');
+    return h('div',null,Object.entries(g).map(([s2,pList])=>{
+      const sup=S.find(s=>s.id===s2);const all=pList.flatMap(p=>(p.items||[]).map(i=>({...i,date:p.date})));
+      const gt=all.reduce((s,i)=>s+(Number(i.qty)||0)*(Number(i.price)||0),0);
+      return h('div',{key:s2,style:{marginBottom:12,border:'1px solid var(--border)',padding:8}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:4}},
+          h('span',{style:{color:'var(--green)',fontWeight:700}},sup?.name),
+          h('span',{className:'zh'},'📞',sup?.phone,' 📠',sup?.fax)),
+        mkT('var(--green)',['Ngày','SP','Mã','Đơn giá','SL','Tiền'],
+          all.map(i=>{const pr=P.find(p=>p.id===i.productId);return[i.date,pr?.name||'',pr?.partNo||'',fm(i.price),i.qty,{v:fm((Number(i.qty)||0)*(Number(i.price)||0)),c:'var(--yellow)'}];}),
+          ['','','','','TỔNG:',{v:fm(gt),c:'var(--yellow)',b:1}]));}));};
+
+  const payRpt=()=>{
+    const fl=PU.filter(p=>mk(p.date)<=mo&&(!sid||p.supplierId===sid));
+    const byS={};fl.forEach(p=>{if(!byS[p.supplierId])byS[p.supplierId]={t:0,c:0};byS[p.supplierId].t+=(p.items||[]).reduce((s,i)=>s+(Number(i.qty)||0)*(Number(i.price)||0),0);byS[p.supplierId].c++;});
+    const gt=Object.values(byS).reduce((s,v)=>s+v.t,0);
+    return mkT('var(--red)',['NCC','# Phiếu','Phải trả'],
+      Object.entries(byS).map(([s2,d])=>[S.find(x=>x.id===s2)?.name||'',d.c,{v:fm(d.t),c:'var(--red)',b:1}]),
+      ['TỔNG','',{v:fm(gt),c:'var(--red)',b:1}]);};
+
+  const rBtns=[{id:'inv',l:'TỒN KHO',c:'btn-blue'},{id:'sup',l:'HĐ NCC',c:'btn-green'},{id:'mst',l:'CUỐI THÁNG',c:'btn-black'},{id:'pay',l:'PHẢI TRẢ',c:'btn-red'}];
+
+  return h('div',null,
+    h('div',{style:{color:'var(--cyan)',fontWeight:700,marginBottom:6}},'▸ BÁO CÁO ',h('span',{className:'zh'},'報表')),
+    h('div',{style:{display:'flex',gap:4,marginBottom:6,flexWrap:'wrap'},className:'no-print'},
+      rBtns.map(r=>h('button',{key:r.id,onClick:()=>srt(r.id),className:'btn btn-sm '+(rt===r.id?r.c:'')},r.l)),
+      h('span',{style:{margin:'0 8px',color:'var(--border)'}},'│'),
+      h(Inp,{type:'month',value:mo,onChange:smo,style:{width:140},cls:'inp-sm'}),
+      (rt==='sup'||rt==='pay')&&h(Sel,{value:sid,onChange:ssid,style:{width:160},cls:'inp-sm'},h('option',{value:''},'All NCC'),S.map(s=>h('option',{key:s.id,value:s.id},s.name))),
+      h('button',{onClick:()=>window.print(),className:'btn btn-sm',style:{marginLeft:'auto',color:'var(--yellow)',borderColor:'var(--yellow)'}},'🖨 PRINT')),
+    h('div',{style:{border:'1px solid var(--border)',padding:8}},
+      rt==='inv'&&invRpt(),
+      rt==='sup'&&supRpt(),
+      rt==='mst'&&mkT('var(--blk)',['Mã','Tên SP','Tồn','TB giá','Giá trị'],
+        v.map(r=>[r.partNo,r.name,{v:r.stock,b:1},fm(r.avgCost),{v:fm(r.stock*r.avgCost),c:'var(--cyan)'}]),
+        ['TỔNG','',{v:fm(v.reduce((s,r)=>s+r.stock,0)),b:1},'',{v:fm(v.reduce((s,r)=>s+r.stock*r.avgCost,0)),c:'var(--cyan)'}]),
+      rt==='pay'&&payRpt()));
+}
+
+ReactDOM.render(h(App),document.getElementById('root'));
+</script>
+</body>
+</html>
